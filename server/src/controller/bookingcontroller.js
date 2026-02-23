@@ -1,7 +1,6 @@
 import Booking from "../models/booking.js";
 import Event from "../models/events.js";
 
-// GET all bookings (admin)
 export const getAllBookings = async (req, res) => {
   try {
     const bookings = await Booking.find()
@@ -14,7 +13,6 @@ export const getAllBookings = async (req, res) => {
   }
 };
 
-// CANCEL booking (admin)
 export const cancelBooking = async (req, res) => {
   try {
     const booking = await Booking.findById(req.params.id);
@@ -24,7 +22,6 @@ export const cancelBooking = async (req, res) => {
       return res.status(400).json({ message: "Booking already cancelled" });
     }
 
-    // update event first
     await Event.findByIdAndUpdate(
       booking.event,
       {
@@ -33,7 +30,6 @@ export const cancelBooking = async (req, res) => {
       }
     );
 
-    // fetch updated event separately
     const updatedEvent = await Event.findById(booking.event);
 
     if (!updatedEvent) {
@@ -43,7 +39,6 @@ export const cancelBooking = async (req, res) => {
     booking.status = "cancelled";
     await booking.save();
 
-    // emit socket update to all clients in event room
     req.io.to(booking.event.toString()).emit("seats_updated", {
       bookedSeats: updatedEvent.bookedSeats,
       availableSeats: updatedEvent.availableSeats,
@@ -56,7 +51,6 @@ export const cancelBooking = async (req, res) => {
   }
 };
 
-// GET my bookings (user)
 export const getMyBookings = async (req, res) => {
   try {
     const bookings = await Booking.find({ user: req.user.id })
@@ -68,7 +62,6 @@ export const getMyBookings = async (req, res) => {
   }
 };
 
-// CREATE booking (user)
 export const createBooking = async (req, res) => {
   try {
     const { eventId, seatNumbers } = req.body;
@@ -80,7 +73,6 @@ export const createBooking = async (req, res) => {
     const event = await Event.findById(eventId);
     if (!event) return res.status(404).json({ message: "Event not found" });
 
-    // check if any selected seat is already booked
     const alreadyBooked = seatNumbers.some((seat) =>
       event.bookedSeats.includes(seat)
     );
@@ -94,7 +86,6 @@ export const createBooking = async (req, res) => {
       return res.status(400).json({ message: "Not enough seats available" });
     }
 
-    // calculate price based on zone
     const totalPrice = seatNumbers.reduce((total, seat) => {
       if (seat <= 16) return total + event.price * 3;   // VIP
       if (seat <= 46) return total + event.price * 2;   // Premium
@@ -109,7 +100,6 @@ export const createBooking = async (req, res) => {
       totalPrice,
     });
 
-    // update event first
     await Event.findByIdAndUpdate(
       eventId,
       {
@@ -118,10 +108,8 @@ export const createBooking = async (req, res) => {
       }
     );
 
-    // fetch updated event separately
     const updatedEvent = await Event.findById(eventId);
 
-    // emit real-time update to all clients in event room
     req.io.to(eventId).emit("seats_updated", {
       bookedSeats: updatedEvent.bookedSeats,
       availableSeats: updatedEvent.availableSeats,
