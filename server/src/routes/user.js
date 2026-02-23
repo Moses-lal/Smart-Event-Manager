@@ -1,8 +1,8 @@
 import express from "express";
 import { verifyToken } from "../middlewares/authmid.js";
-import { createBooking, getMyBookings } from "../controllers/bookingcontroller.js";
-import { getAllEvents, getEventById } from "../controllers/eventcontroller.js";
-import { updateProfile, updatePassword } from "../controllers/usercontroller.js";
+import { createBooking, getMyBookings } from "../controller/bookingcontroller.js";
+import { getAllEvents, getEventById } from "../controller/eventcontroller.js";
+import { updateProfile, updatePassword } from "../controller/usercontroller.js";
 
 const router = express.Router();
 

@@ -14,7 +14,7 @@ export const getAllBookings = async (req, res) => {
   }
 };
 
-// cancel booking (admin)
+// CANCEL booking (admin)
 export const cancelBooking = async (req, res) => {
   try {
     const booking = await Booking.findById(req.params.id);
@@ -24,20 +24,26 @@ export const cancelBooking = async (req, res) => {
       return res.status(400).json({ message: "Booking already cancelled" });
     }
 
-    // restore seats
-    const updatedEvent = await Event.findByIdAndUpdate(
+    // update event first
+    await Event.findByIdAndUpdate(
       booking.event,
       {
         $inc: { availableSeats: booking.quantity },
         $pull: { bookedSeats: { $in: booking.seatNumbers } }
-      },
-      { new: true }
+      }
     );
+
+    // fetch updated event separately
+    const updatedEvent = await Event.findById(booking.event);
+
+    if (!updatedEvent) {
+      return res.status(404).json({ message: "Event not found" });
+    }
 
     booking.status = "cancelled";
     await booking.save();
 
-    // emit to all clients in event room
+    // emit socket update to all clients in event room
     req.io.to(booking.event.toString()).emit("seats_updated", {
       bookedSeats: updatedEvent.bookedSeats,
       availableSeats: updatedEvent.availableSeats,
@@ -45,6 +51,7 @@ export const cancelBooking = async (req, res) => {
 
     res.status(200).json({ message: "Booking cancelled successfully" });
   } catch (error) {
+    console.error("Cancel booking error:", error);
     res.status(500).json({ message: "Internal server error" });
   }
 };
@@ -78,17 +85,20 @@ export const createBooking = async (req, res) => {
       event.bookedSeats.includes(seat)
     );
     if (alreadyBooked) {
-      return res.status(400).json({ message: "Some seats were just booked by someone else. Please reselect." });
+      return res.status(400).json({
+        message: "Some seats were just booked by someone else. Please reselect.",
+      });
     }
 
     if (event.availableSeats < seatNumbers.length) {
       return res.status(400).json({ message: "Not enough seats available" });
     }
 
+    // calculate price based on zone
     const totalPrice = seatNumbers.reduce((total, seat) => {
-      if (seat <= 16) return total + event.price * 3;        // VIP
-      if (seat <= 46) return total + event.price * 2;        // Premium
-      return total + event.price;                             // Standard
+      if (seat <= 16) return total + event.price * 3;   // VIP
+      if (seat <= 46) return total + event.price * 2;   // Premium
+      return total + event.price;                        // Standard
     }, 0);
 
     const booking = await Booking.create({
@@ -99,17 +109,19 @@ export const createBooking = async (req, res) => {
       totalPrice,
     });
 
-    // update event
-    const updatedEvent = await Event.findByIdAndUpdate(
+    // update event first
+    await Event.findByIdAndUpdate(
       eventId,
       {
         $inc: { availableSeats: -seatNumbers.length },
         $push: { bookedSeats: { $each: seatNumbers } }
-      },
-      { new: true }
+      }
     );
 
-    // emit to ALL clients in this event room
+    // fetch updated event separately
+    const updatedEvent = await Event.findById(eventId);
+
+    // emit real-time update to all clients in event room
     req.io.to(eventId).emit("seats_updated", {
       bookedSeats: updatedEvent.bookedSeats,
       availableSeats: updatedEvent.availableSeats,
@@ -117,7 +129,7 @@ export const createBooking = async (req, res) => {
 
     res.status(201).json({ message: "Booking successful!", booking });
   } catch (error) {
-    console.error(error);
+    console.error("Create booking error:", error);
     res.status(500).json({ message: "Internal server error" });
   }
 };
